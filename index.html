@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hand Pose Detection App</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap");
+
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background: #111;
+        color: white;
+        flex-direction: column;
+        font-family: "Poppins", sans-serif;
+        margin: 0;
+        padding: 20px;
+        transition: background-color 0.5s ease;
+      }
+
+      h2 {
+        color: #ff69b4;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+
+      #container {
+        position: relative;
+        width: 640px;
+        height: 480px;
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: 0 0 20px rgba(255, 105, 180, 0.3);
+      }
+
+      video,
+      canvas {
+        position: absolute;
+        width: 640px;
+        height: 480px;
+        object-fit: cover;
+      }
+
+      #greeting {
+        margin-top: 15px;
+        font-size: 22px;
+        color: #ff69b4;
+        text-align: center;
+        min-height: 30px;
+        font-weight: 600;
+        opacity: 0;
+        transition: opacity 0.5s ease;
+      }
+
+      #greeting.visible {
+        opacity: 1;
+      }
+
+      #status {
+        margin-top: 15px;
+        font-size: 18px;
+        color: #ff69b4;
+        text-align: center;
+        min-height: 25px;
+      }
+
+      #countdown {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 120px;
+        color: #ff69b4;
+        font-weight: bold;
+        display: none;
+        text-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+      }
+
+      #pose-guide {
+        display: flex;
+        justify-content: center;
+        margin-top: 20px;
+        gap: 15px;
+      }
+
+      .pose-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: rgba(255, 105, 180, 0.1);
+        padding: 10px;
+        border-radius: 10px;
+        transition: transform 0.3s ease;
+      }
+
+      .pose-item:hover {
+        transform: scale(1.05);
+      }
+
+      .pose-emoji {
+        font-size: 30px;
+        margin-bottom: 5px;
+      }
+
+      .pose-name {
+        font-size: 14px;
+        color: #ff69b4;
+      }
+
+      #controls {
+        margin-top: 20px;
+        display: flex;
+        gap: 15px;
+      }
+
+      button {
+        background: #ff69b4;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 25px;
+        font-family: "Poppins", sans-serif;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      button:hover {
+        background: #ff85c1;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(255, 105, 180, 0.4);
+      }
+
+      #captured-images {
+        margin-top: 20px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+        max-width: 640px;
+      }
+
+      .captured-image {
+        width: 100px;
+        height: 75px;
+        object-fit: cover;
+        border-radius: 5px;
+        border: 2px solid #ff69b4;
+      }
+
+      /* Background color classes for different poses */
+      .bg-thumbs-up {
+        background-color: #4caf50 !important;
+      }
+
+      .bg-thumbs-down {
+        background-color: #f44336 !important;
+      }
+
+      .bg-peace {
+        background-color: #2196f3 !important;
+      }
+
+      .bg-ok {
+        background-color: #ffeb3b !important;
+      }
+
+      .bg-fist {
+        background-color: #ff9800 !important;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>🖐 Hand Pose Detection App</h2>
+
+    <div id="container">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+      <div id="countdown"></div>
+    </div>
+
+    <div id="greeting">Hello Rianne, do some poses.</div>
+    <div id="status">Initializing camera...</div>
+
+    <div id="pose-guide">
+      <div class="pose-item">
+        <div class="pose-emoji">👍</div>
+        <div class="pose-name">Thumbs Up</div>
+      </div>
+      <div class="pose-item">
+        <div class="pose-emoji">👎</div>
+        <div class="pose-name">Thumbs Down</div>
+      </div>
+      <div class="pose-item">
+        <div class="pose-emoji">✌️</div>
+        <div class="pose-name">Peace Sign</div>
+      </div>
+      <div class="pose-item">
+        <div class="pose-emoji">👌</div>
+        <div class="pose-name">OK Sign</div>
+      </div>
+      <div class="pose-item">
+        <div class="pose-emoji">👊</div>
+        <div class="pose-name">Fist Bump</div>
+      </div>
+    </div>
+
+    <div id="controls">
+      <button id="save-images">Save Images as ZIP</button>
+      <button id="clear-images">Clear Images</button>
+    </div>
+
+    <div id="captured-images"></div>
+
+    <!-- Load TensorFlow.js and models -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+    <script>
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      const greeting = document.getElementById("greeting");
+      const status = document.getElementById("status");
+      const countdown = document.getElementById("countdown");
+      const capturedImagesContainer =
+        document.getElementById("captured-images");
+      const saveImagesBtn = document.getElementById("save-images");
+      const clearImagesBtn = document.getElementById("clear-images");
+
+      // Set canvas dimensions
+      canvas.width = 640;
+      canvas.height = 480;
+
+      // Store captured images
+      let capturedImages = [];
+
+      // Variables for pose detection
+      let currentPose = null;
+      let isCountingDown = false;
+      let faceDetected = false;
+      let lastCaptureTime = 0;
+      const captureCooldown = 3000; // 3 seconds cooldown between captures
+
+      async function setupCamera() {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480 },
+        });
+        video.srcObject = stream;
+
+        return new Promise((resolve) => {
+          video.onloadedmetadata = () => {
+            resolve(video);
+          };
+        });
+      }
+
+      // Function to detect hand poses based on landmarks
+      function detectHandPose(landmarks) {
+        // Get key points
+        const thumbTip = landmarks[4];
+        const thumbIP = landmarks[3];
+        const thumbMCP = landmarks[2];
+        const indexTip = landmarks[8];
+        const indexPIP = landmarks[6];
+        const middleTip = landmarks[12];
+        const middlePIP = landmarks[10];
+        const ringTip = landmarks[16];
+        const ringPIP = landmarks[14];
+        const pinkyTip = landmarks[20];
+        const pinkyPIP = landmarks[18];
+        const wrist = landmarks[0];
+
+        // Thumbs Up: Thumb extended up, other fingers curled
+        const isThumbUp =
+          thumbTip[1] < thumbIP[1] &&
+          thumbIP[1] < thumbMCP[1] &&
+          indexTip[1] > indexPIP[1] &&
+          middleTip[1] > middlePIP[1] &&
+          ringTip[1] > ringPIP[1] &&
+          pinkyTip[1] > pinkyPIP[1];
+
+        // Thumbs Down: Thumb extended down, other fingers curled
+        const isThumbDown =
+          thumbTip[1] > thumbIP[1] &&
+          thumbIP[1] > thumbMCP[1] &&
+          indexTip[1] > indexPIP[1] &&
+          middleTip[1] > middlePIP[1] &&
+          ringTip[1] > ringPIP[1] &&
+          pinkyTip[1] > pinkyPIP[1];
+
+        // Peace Sign: Index and middle fingers extended, others curled
+        const isPeaceSign =
+          indexTip[1] < indexPIP[1] &&
+          middleTip[1] < middlePIP[1] &&
+          ringTip[1] > ringPIP[1] &&
+          pinkyTip[1] > pinkyPIP[1];
+
+        // OK Sign: Thumb and index finger touching, other fingers extended
+        const thumbIndexDistance = Math.sqrt(
+          Math.pow(thumbTip[0] - indexTip[0], 2) +
+            Math.pow(thumbTip[1] - indexTip[1], 2)
+        );
+        const isOkSign =
+          thumbIndexDistance < 30 &&
+          middleTip[1] < middlePIP[1] &&
+          ringTip[1] < ringPIP[1] &&
+          pinkyTip[1] < pinkyPIP[1];
+
+        // Fist Bump: All fingers curled
+        const isFist =
+          indexTip[1] > indexPIP[1] &&
+          middleTip[1] > middlePIP[1] &&
+          ringTip[1] > ringPIP[1] &&
+          pinkyTip[1] > pinkyPIP[1] &&
+          thumbTip[1] > thumbIP[1];
+
+        if (isThumbUp) return "thumbs-up";
+        if (isThumbDown) return "thumbs-down";
+        if (isPeaceSign) return "peace";
+        if (isOkSign) return "ok";
+        if (isFist) return "fist";
+
+        return null;
+      }
+
+      // Function to change background based on pose
+      function changeBackground(pose) {
+        // Remove all background classes
+        document.body.classList.remove(
+          "bg-thumbs-up",
+          "bg-thumbs-down",
+          "bg-peace",
+          "bg-ok",
+          "bg-fist"
+        );
+
+        // Add the appropriate class
+        switch (pose) {
+          case "thumbs-up":
+            document.body.classList.add("bg-thumbs-up");
+            break;
+          case "thumbs-down":
+            document.body.classList.add("bg-thumbs-down");
+            break;
+          case "peace":
+            document.body.classList.add("bg-peace");
+            break;
+          case "ok":
+            document.body.classList.add("bg-ok");
+            break;
+          case "fist":
+            document.body.classList.add("bg-fist");
+            break;
+        }
+      }
+
+      // Function to start countdown and capture image
+      function startCountdownAndCapture() {
+        // Check if we're already counting down or if we're in cooldown period
+        if (isCountingDown || Date.now() - lastCaptureTime < captureCooldown) {
+          return;
+        }
+
+        isCountingDown = true;
+        let count = 3;
+
+        countdown.style.display = "block";
+        countdown.textContent = count;
+
+        const countInterval = setInterval(() => {
+          count--;
+          if (count > 0) {
+            countdown.textContent = count;
+          } else {
+            countdown.textContent = "📸";
+
+            // Capture image after a short delay
+            setTimeout(() => {
+              captureImage();
+              countdown.style.display = "none";
+              isCountingDown = false;
+              lastCaptureTime = Date.now();
+            }, 500);
+
+            clearInterval(countInterval);
+          }
+        }, 1000);
+      }
+
+      // Function to capture image
+      function captureImage() {
+        // Create a temporary canvas to capture the image
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        const tempCtx = tempCanvas.getContext("2d");
+
+        // Draw the current video frame to the temporary canvas
+        tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+        // Convert to data URL
+        const imageDataUrl = tempCanvas.toDataURL("image/png");
+
+        // Add to captured images array
+        capturedImages.push({
+          dataUrl: imageDataUrl,
+          pose: currentPose,
+          timestamp: new Date().toISOString(),
+        });
+
+        // Display the captured image
+        const imgElement = document.createElement("img");
+        imgElement.src = imageDataUrl;
+        imgElement.className = "captured-image";
+        imgElement.title = `Pose: ${currentPose}`;
+        capturedImagesContainer.appendChild(imgElement);
+
+        status.textContent = `Captured ${currentPose} pose!`;
+      }
+
+      // Function to save images as ZIP
+      async function saveImagesAsZip() {
+        if (capturedImages.length === 0) {
+          status.textContent = "No images to save!";
+          return;
+        }
+
+        status.textContent = "Creating ZIP file...";
+
+        const zip = new JSZip();
+        const imgFolder = zip.folder("hand_poses");
+
+        // Add each image to the ZIP
+        for (let i = 0; i < capturedImages.length; i++) {
+          const img = capturedImages[i];
+          // Convert data URL to blob
+          const response = await fetch(img.dataUrl);
+          const blob = await response.blob();
+
+          // Add to ZIP with filename based on pose and timestamp
+          const timestamp = new Date(img.timestamp)
+            .toISOString()
+            .replace(/[:.]/g, "-");
+          imgFolder.file(`${img.pose}_${timestamp}.png`, blob);
+        }
+
+        // Generate and download the ZIP file
+        zip.generateAsync({ type: "blob" }).then(function (content) {
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(content);
+          link.download = "hand_poses.zip";
+          link.click();
+
+          status.textContent = "ZIP file downloaded!";
+        });
+      }
+
+      // Function to clear captured images
+      function clearCapturedImages() {
+        capturedImages = [];
+        capturedImagesContainer.innerHTML = "";
+        status.textContent = "Cleared all images!";
+      }
+
+      // Event listeners
+      saveImagesBtn.addEventListener("click", saveImagesAsZip);
+      clearImagesBtn.addEventListener("click", clearCapturedImages);
+
+      async function main() {
+        await setupCamera();
+        video.play();
+
+        // Load handpose model
+        const handModel = await handpose.load();
+        console.log("Handpose model loaded");
+
+        // Load face detection model
+        const faceModel = await blazeface.load();
+        console.log("Face detection model loaded");
+
+        status.textContent = "Models loaded. Show your face and hands!";
+
+        async function detect() {
+          // Clear canvas
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          // Draw video frame
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          // Detect faces
+          const faces = await faceModel.estimateFaces(video, false);
+          faceDetected = faces.length > 0;
+
+          // Show/hide greeting based on face detection
+          if (faceDetected) {
+            greeting.classList.add("visible");
+          } else {
+            greeting.classList.remove("visible");
+          }
+
+          // Detect hands
+          const hands = await handModel.estimateHands(video);
+
+          if (hands.length > 0) {
+            for (const hand of hands) {
+              const landmarks = hand.landmarks;
+
+              // Draw hand landmarks
+              for (let i = 0; i < landmarks.length; i++) {
+                const [x, y, z] = landmarks[i];
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                ctx.fillStyle = "#ff69b4";
+                ctx.fill();
+              }
+
+              // Detect hand pose
+              const detectedPose = detectHandPose(landmarks);
+
+              if (detectedPose && detectedPose !== currentPose) {
+                currentPose = detectedPose;
+                changeBackground(detectedPose);
+
+                // Display detected pose
+                ctx.font = "24px Poppins";
+                ctx.fillStyle = "white";
+                ctx.textAlign = "center";
+
+                let poseText = "";
+                switch (detectedPose) {
+                  case "thumbs-up":
+                    poseText = "👍 Thumbs Up!";
+                    break;
+                  case "thumbs-down":
+                    poseText = "👎 Thumbs Down!";
+                    break;
+                  case "peace":
+                    poseText = "✌️ Peace Sign!";
+                    break;
+                  case "ok":
+                    poseText = "👌 OK Sign!";
+                    break;
+                  case "fist":
+                    poseText = "👊 Fist Bump!";
+                    break;
+                }
+
+                ctx.fillText(poseText, canvas.width / 2, 60);
+                ctx.textAlign = "left";
+
+                // Start countdown to capture image when a pose is detected
+                startCountdownAndCapture();
+              }
+            }
+          } else {
+            // No hands detected, reset pose and background
+            if (currentPose) {
+              currentPose = null;
+              document.body.classList.remove(
+                "bg-thumbs-up",
+                "bg-thumbs-down",
+                "bg-peace",
+                "bg-ok",
+                "bg-fist"
+              );
+            }
+          }
+
+          requestAnimationFrame(detect);
+        }
+
+        detect();
+      }
+
+      main().catch((err) => {
+        console.error("Error initializing:", err);
+        status.textContent =
+          "Camera or model failed to load. See console for details.";
+      });
+    </script>
+  </body>
+</html>
